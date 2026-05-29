@@ -1,6 +1,22 @@
-from flask import Flask, render_template
+from flask import Flask, render_template, g
+from database.db import init_db, seed_db, get_db
 
 app = Flask(__name__)
+app.config['DATABASE'] = 'database.sqlite'
+
+@app.teardown_appcontext
+def teardown_db(exception):
+    db = g.pop('db', None)
+    if db is not None:
+        db.close()
+
+@app.cli.command("init-db")
+def init_db_command():
+    """Initialize the database and seed it with sample data."""
+    init_db()
+    seed_db()
+    print("Initialized the database and added sample data.")
+
 
 
 # ------------------------------------------------------------------ #
