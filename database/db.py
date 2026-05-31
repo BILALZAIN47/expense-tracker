@@ -1,5 +1,6 @@
 import sqlite3
 from flask import g, current_app
+from werkzeug.security import generate_password_hash
 
 def get_db():
     """Returns the database connection for the current request."""
@@ -93,3 +94,19 @@ def seed_db():
 
     finally:
         db.close()
+
+def seed_custom_user(name, email, password):
+    db = get_db()
+    # Check if the email already exists in the users table using a parameterized query
+    user = db.execute('SELECT id FROM users WHERE email = ?', (email,)).fetchone()
+    if user:
+        print(f"User with email {email} already exists. Skipping.")
+        return
+
+    # Hash the password using generate_password_hash and insert the user
+    password_hash = generate_password_hash(password)
+    db.execute('INSERT INTO users (username, password_hash, email) VALUES (?, ?, ?)',
+               (name, password_hash, email))
+    db.commit()
+    db.close()
+    print(f"User {name} with email {email} successfully seeded.")
