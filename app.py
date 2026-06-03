@@ -110,8 +110,60 @@ def profile():
         return redirect(url_for("login"))
 
     db = get_db()
+
+    # Fetch user details
     user = db.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
-    return render_template("profile.html", user=user)
+    if not user:
+        flash("User not found.")
+        return redirect(url_for("login"))
+
+    # Calculate Total Spent and Transaction Count
+    stats = db.execute(
+        "SELECT SUM(amount) as total, COUNT(*) as count FROM expenses WHERE user_id = ?",
+        (user_id,)
+    ).fetchone()
+
+    total_spent = stats["total"] if stats["total"] is not None else 0.0
+    transaction_count = stats["count"] if stats["count"] is not None else 0
+
+    # Calculate Top Category
+    top_cat_row = db.execute(
+        """SELECT c.name
+           FROM expenses e
+           JOIN categories c ON e.category_id = c.id
+           WHERE e.user_id = ?
+           GROUP BY c.name
+           ORDER BY SUM(e.amount) DESC
+           LIMIT 1""",
+        (user_id,)
+    ).fetchone()
+    top_category = top_cat_row["name"] if top_cat_row else "N/A"
+
+    # Fetch Recent Transactions
+    expenses = db.execute(
+        """SELECT e.date, e.description, c.name as category_name, e.amount
+           FROM expenses e
+           JOIN categories c ON e.category_id = c.id
+           WHERE e.user_id = ?
+           ORDER BY e.date DESC""",
+        (user_id,)
+    ).fetchall()
+
+    # Generate Initials for Avatar
+    username = user["username"] or "User"
+    initials = "".join([name[0].upper() for name in username.split()[:2]])
+    if not initials:
+        initials = "U"
+
+    return render_template(
+        "profile.html",
+        user=user,
+        total_spent=total_spent,
+        transaction_count=transaction_count,
+        top_category=top_category,
+        expenses=expenses,
+        initials=initials
+    )
 
 
 @app.route("/expenses/add")
