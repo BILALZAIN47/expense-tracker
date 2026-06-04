@@ -1,4 +1,4 @@
-from flask import Flask, render_template, g, request, redirect, url_for, session, flash
+from flask import Flask, render_template, g, request, redirect, url_for, session, flash, jsonify
 from database.db import init_db, seed_db, get_db, seed_custom_user
 from werkzeug.security import generate_password_hash, check_password_hash
 
@@ -166,7 +166,54 @@ def profile():
     )
 
 
-@app.route("/expenses/add")
+@app.route("/expenses/history")
+def expenses_history():
+    user_id = session.get("user_id")
+    if not user_id:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    db = get_db()
+    expenses = db.execute(
+        "SELECT e.id, e.date, e.description, c.name AS category, e.amount FROM expenses e JOIN categories c ON e.category_id = c.id WHERE e.user_id = ? ORDER BY e.date DESC",
+        (user_id,)
+    ).fetchall()
+
+    return jsonify([dict(row) for row in expenses])
+
+
+@app.route("/expenses/stats")
+def expenses_stats():
+    user_id = session.get("user_id")
+    if not user_id:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    db = get_db()
+    row = db.execute(
+        "SELECT SUM(amount) AS total_spent, COUNT(*) AS transaction_count FROM expenses WHERE user_id = ?",
+        (user_id,)
+    ).fetchone()
+
+    return jsonify({
+        "total_spent": row["total_spent"] if row and row["total_spent"] is not None else 0.0,
+        "transaction_count": row["transaction_count"] if row else 0
+    })
+
+
+@app.route("/expenses/categories")
+def expenses_categories():
+    user_id = session.get('user_id')
+    if not user_id:
+        return jsonify({"error": "Authentication required"}), 401
+
+    db = get_db()
+    results = db.execute(
+        "SELECT c.name AS category, SUM(e.amount) AS amount FROM expenses e JOIN categories c ON e.category_id = c.id WHERE e.user_id = ? GROUP BY c.name",
+        (user_id,)
+    ).fetchall()
+
+    return jsonify([dict(row) for row in results])
+
+
 def add_expense():
     return "Add expense — coming in Step 7"
 

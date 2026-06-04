@@ -1,4 +1,6 @@
 import sqlite3
+import random
+from datetime import datetime, timedelta
 from flask import g, current_app
 from werkzeug.security import generate_password_hash
 
@@ -110,3 +112,43 @@ def seed_custom_user(name, email, password):
     db.commit()
     db.close()
     print(f"User {name} with email {email} successfully seeded.")
+
+def seed_expenses_for_user(user_id, month):
+    """Seeds random expenses for a specific user for a given month (YYYY-MM)."""
+    # We use a standalone connection since we might not be in a request context
+    from flask import Flask
+    app = Flask(__name__)
+    app.config['DATABASE'] = 'database.sqlite'
+
+    with app.app_context():
+        db = get_db()
+
+        # Get available categories
+        categories = db.execute('SELECT id, name FROM categories').fetchall()
+        if not categories:
+            print("No categories found. Please run seed_db() first.")
+            return
+
+        # Generate 5-10 random expenses
+        count = random.randint(5, 10)
+        expenses_to_insert = []
+
+        # Year is assumed to be 2026 based on project context
+        year = 2026
+        month_num = int(month.split('-')[1]) if '-' in month else int(month)
+
+        # Basic date generation for the month
+        for i in range(count):
+            cat = random.choice(categories)
+            amount = round(random.uniform(10.0, 500.0), 2)
+            day = random.randint(1, 28) # Simplified to 28 to avoid month end issues
+            date_str = f"{year}-{month_num:02d}-{day:02d}"
+            desc = f"Random {cat['name']} expense {i+1}"
+            expenses_to_insert.append((user_id, cat['id'], amount, desc, date_str))
+
+        db.executemany(
+            'INSERT INTO expenses (user_id, category_id, amount, description, date) VALUES (?, ?, ?, ?, ?)',
+            expenses_to_insert
+        )
+        db.commit()
+        print(f"Successfully seeded {count} expenses for user {user_id} in month {month}.")
