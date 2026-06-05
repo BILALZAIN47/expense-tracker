@@ -32,7 +32,10 @@
 
     <!-- Recent Transactions Section -->
     <div class="transactions-card">
-        <h2>Recent Transactions</h2>
+        <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+            <h2>Recent Transactions</h2>
+            <a href="{{ url_for('add_expense') }}" class="btn-primary" style="text-decoration: none; padding: 0.6rem 1.2rem; font-size: 0.9rem; cursor: pointer;">+ Add Expense</a>
+        </div>
         {% if expenses %}
         <div class="table-responsive">
             <table class="transactions-table">

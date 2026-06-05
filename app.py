@@ -1,4 +1,5 @@
 from flask import Flask, render_template, g, request, redirect, url_for, session, flash, jsonify
+from datetime import datetime
 from database.db import init_db, seed_db, get_db, seed_custom_user
 from werkzeug.security import generate_password_hash, check_password_hash
 
@@ -89,6 +90,16 @@ def privacy():
 @app.route("/terms")
 def terms():
     return render_template("terms.html")
+
+
+@app.route("/analytics")
+def analytics():
+    user_id = session.get("user_id")
+    if not user_id:
+        flash("Please log in to view analytics.")
+        return redirect(url_for("login"))
+
+    return render_template("analytics.html")
 
 
 # ------------------------------------------------------------------ #
@@ -214,8 +225,67 @@ def expenses_categories():
     return jsonify([dict(row) for row in results])
 
 
+@app.route("/expenses/add", methods=["GET", "POST"])
 def add_expense():
-    return "Add expense — coming in Step 7"
+    user_id = session.get("user_id")
+    if not user_id:
+        flash("Please log in to add an expense.")
+        return redirect(url_for("login"))
+
+    categories = ["Food", "Transport", "Bills", "Health", "Entertainment", "Shopping", "Other"]
+
+    if request.method == "POST":
+        amount_str = request.form.get("amount")
+        category = request.form.get("category")
+        date_str = request.form.get("date")
+        description = request.form.get("description")
+
+        # Validation
+        try:
+            amount = float(amount_str)
+            if amount <= 0:
+                raise ValueError("Amount must be greater than zero")
+        except (TypeError, ValueError):
+            flash("Invalid amount. Please enter a value greater than 0.")
+            return redirect(url_for("add_expense"))
+
+        if not category or category not in categories:
+            flash("Invalid category selected.")
+            return redirect(url_for("add_expense"))
+
+        if not date_str:
+            flash("Date is required.")
+            return redirect(url_for("add_expense"))
+
+        try:
+            datetime.strptime(date_str, "%Y-%m-%d")
+        except ValueError:
+            flash("Invalid date format. Please use YYYY-MM-DD.")
+            return redirect(url_for("add_expense"))
+
+        db = get_db()
+
+        # Map category name to id
+        cat_row = db.execute("SELECT id FROM categories WHERE name = ?", (category,)).fetchone()
+        if not cat_row:
+            flash("Category not found in database.")
+            return redirect(url_for("add_expense"))
+
+        category_id = cat_row["id"]
+
+        # Insert expense
+        db.execute(
+            "INSERT INTO expenses (user_id, category_id, amount, description, date) VALUES (?, ?, ?, ?, ?)",
+            (user_id, category_id, amount, description or None, date_str)
+        )
+        db.commit()
+
+        flash("Expense added successfully!")
+        return redirect(url_for("profile"))
+
+    return render_template("add_expense.html", categories=categories, today=datetime.now().strftime("%Y-%m-%d"))
+
+
 
 
 @app.route("/expenses/<int:id>/edit")
