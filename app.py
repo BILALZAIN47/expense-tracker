@@ -152,7 +152,7 @@ def profile():
 
     # Fetch Recent Transactions
     expenses = db.execute(
-        """SELECT e.date, e.description, c.name as category_name, e.amount
+        """SELECT e.id, e.date, e.description, c.name as category_name, e.amount
            FROM expenses e
            JOIN categories c ON e.category_id = c.id
            WHERE e.user_id = ?
@@ -288,14 +288,129 @@ def add_expense():
 
 
 
-@app.route("/expenses/<int:id>/edit")
+@app.route("/expenses/<int:id>/edit", methods=["GET", "POST"])
 def edit_expense(id):
-    return "Edit expense — coming in Step 8"
+    user_id = session.get("user_id")
+    if not user_id:
+        flash("Please log in to edit an expense.")
+        return redirect(url_for("login"))
+
+    db = get_db()
+
+    # Fetch categories list for the dropdown (consistent with add_expense)
+    categories = ["Food", "Transport", "Bills", "Health", "Entertainment", "Shopping", "Other"]
+
+    if request.method == "POST":
+        amount_str = request.form.get("amount")
+        category = request.form.get("category")
+        date_str = request.form.get("date")
+        description = request.form.get("description")
+
+        # Validation
+        try:
+            amount = float(amount_str)
+            if amount <= 0:
+                raise ValueError("Amount must be greater than zero")
+        except (TypeError, ValueError):
+            flash("Invalid amount. Please enter a value greater than 0.")
+            expense = db.execute(
+                "SELECT e.id, e.amount, e.category_id, e.description, e.date, c.name as category_name FROM expenses e JOIN categories c ON e.category_id = c.id WHERE e.id = ? AND e.user_id = ?",
+                (id, user_id)
+            ).fetchone()
+            return render_template("edit_expense.html", expense=expense, categories=categories, today=datetime.now().strftime("%Y-%m-%d"))
+
+        if not category or category not in categories:
+            flash("Invalid category selected.")
+            expense = db.execute(
+                "SELECT e.id, e.amount, e.category_id, e.description, e.date, c.name as category_name FROM expenses e JOIN categories c ON e.category_id = c.id WHERE e.id = ? AND e.user_id = ?",
+                (id, user_id)
+            ).fetchone()
+            return render_template("edit_expense.html", expense=expense, categories=categories, today=datetime.now().strftime("%Y-%m-%d"))
+
+        if not date_str:
+            flash("Date is required.")
+            expense = db.execute(
+                "SELECT e.id, e.amount, e.category_id, e.description, e.date, c.name as category_name FROM expenses e JOIN categories c ON e.category_id = c.id WHERE e.id = ? AND e.user_id = ?",
+                (id, user_id)
+            ).fetchone()
+            return render_template("edit_expense.html", expense=expense, categories=categories, today=datetime.now().strftime("%Y-%m-%d"))
+
+        try:
+            datetime.strptime(date_str, "%Y-%m-%d")
+        except ValueError:
+            flash("Invalid date format. Please use YYYY-MM-DD.")
+            expense = db.execute(
+                "SELECT e.id, e.amount, e.category_id, e.description, e.date, c.name as category_name FROM expenses e JOIN categories c ON e.category_id = c.id WHERE e.id = ? AND e.user_id = ?",
+                (id, user_id)
+            ).fetchone()
+            return render_template("edit_expense.html", expense=expense, categories=categories, today=datetime.now().strftime("%Y-%m-%d"))
+
+        # Map category name to id
+        cat_row = db.execute("SELECT id FROM categories WHERE name = ?", (category,)).fetchone()
+        if not cat_row:
+            flash("Category not found in database.")
+            expense = db.execute(
+                "SELECT e.id, e.amount, e.category_id, e.description, e.date, c.name as category_name FROM expenses e JOIN categories c ON e.category_id = c.id WHERE e.id = ? AND e.user_id = ?",
+                (id, user_id)
+            ).fetchone()
+            return render_template("edit_expense.html", expense=expense, categories=categories, today=datetime.now().strftime("%Y-%m-%d"))
+
+        category_id = cat_row["id"]
+
+        # Update expense
+        result = db.execute(
+            "UPDATE expenses SET category_id = ?, amount = ?, description = ?, date = ? WHERE id = ? AND user_id = ?",
+            (category_id, amount, description or None, date_str, id, user_id)
+        )
+        db.commit()
+
+        if result.rowcount == 0:
+            flash("Expense not found or you are not authorized to edit it.")
+            return redirect(url_for("profile"))
+
+        flash("Expense updated successfully!")
+        return redirect(url_for("profile"))
+
+    # GET request
+    expense = db.execute(
+        "SELECT e.id, e.amount, e.category_id, e.description, e.date, c.name as category_name FROM expenses e JOIN categories c ON e.category_id = c.id WHERE e.id = ? AND e.user_id = ?",
+        (id, user_id)
+    ).fetchone()
+
+    if not expense:
+        flash("Expense not found or unauthorized.")
+        return redirect(url_for("profile"))
+
+    return render_template("edit_expense.html", expense=expense, categories=categories, today=datetime.now().strftime("%Y-%m-%d"))
 
 
-@app.route("/expenses/<int:id>/delete")
-def delete_expense(id):
-    return "Delete expense — coming in Step 9"
+
+@app.route("/expenses/delete/<int:expense_id>", methods=["POST"])
+def delete_expense(expense_id):
+    user_id = session.get("user_id")
+    if not user_id:
+        return redirect(url_for("login"))
+
+    db = get_db()
+
+    # Step 2 & 3: Fetch and Ownership Check
+    expense = db.execute("SELECT id, user_id FROM expenses WHERE id = ?", (expense_id,)).fetchone()
+
+    if not expense:
+        flash("Expense not found")
+        return redirect(url_for("profile"))
+
+    if expense["user_id"] != user_id:
+        flash("You are not authorized to delete this expense")
+        return redirect(url_for("profile"))
+
+    # Step 4: Delete from Database
+    db.execute("DELETE FROM expenses WHERE id = ? AND user_id = ?", (expense_id, user_id))
+    db.commit()
+
+    flash("Expense deleted successfully!")
+    return redirect(url_for("profile"))
+
 
 
 if __name__ == "__main__":
