@@ -1,5 +1,20 @@
 {
   "permissions": {
-    "allow": ["Bash(ls *)"]
+    "allow": [
+      "Bash(ls *)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "if echo \"$(cat /dev/stdin)\" | grep -q 'rm .* database.sqlite'; then echo 'BLOCKED: You cannot delete the database file!' >&2; exit 2; fi"
+          }
+        ]
+      }
+    ]
   }
 }
